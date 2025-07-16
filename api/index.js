@@ -112,22 +112,3 @@ module.exports = async (req, res) => {
     res.status(200).send('LINE Chatbot is running!');
   }
 };
-```json
-// package.json
-{
-  "name": "line-gemini-chatbot",
-  "version": "1.0.0",
-  "description": "LINE Chatbot powered by Google Gemini on Vercel",
-  "main": "api/index.js",
-  "scripts": {
-    "start": "node api/index.js"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "MIT",
-  "dependencies": {
-    "@google/generative-ai": "^0.1.3",
-    "@line/bot-sdk": "^7.5.2",
-    "dotenv": "^16.3.1"
-  }
-}
