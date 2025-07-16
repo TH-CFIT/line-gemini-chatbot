@@ -30,7 +30,11 @@ if (!geminiApiKey) {
 }
 
 // Create Gemini client.
-const genAI = new GoogleGenerativeAI(geminiApiKey);
+// IMPORTANT: Specify a base URL with a specific region to potentially avoid overloaded models.
+// 'us-central1' is a common and often stable region.
+const genAI = new GoogleGenerativeAI(geminiApiKey, {
+  baseUrl: 'https://us-central1-aiplatform.googleapis.com/v1beta',
+});
 
 // Select the Gemini model to use.
 // Using 'gemini-1.5-flash' for general text generation, as 'gemini-pro' might not be available in all regions or for all API versions.
