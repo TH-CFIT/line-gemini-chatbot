@@ -1,84 +1,85 @@
 // api/index.js
 
-// โหลด Environment Variables สำหรับการพัฒนาในเครื่อง (local development)
-// Vercel จะจัดการ Environment Variables ให้เองเมื่อ Deploy
+// Load Environment Variables for local development.
+// Vercel handles Environment Variables automatically when deployed.
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
 }
 
-// นำเข้า LINE Bot SDK และ Google Generative AI SDK
+// Import LINE Bot SDK and Google Generative AI SDK.
 const line = require('@line/bot-sdk');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// กำหนดค่า Channel Secret และ Channel Access Token จาก Environment Variables
-// (ค่าเหล่านี้จะถูกตั้งค่าใน Vercel Dashboard หรือในไฟล์ .env.local สำหรับ local)
+// Define Channel Secret and Channel Access Token from Environment Variables.
+// (These values will be set in the Vercel Dashboard or in .env.local for local testing.)
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
 
-// สร้าง LINE client
+// Create LINE client.
 const client = new line.Client(config);
 
-// กำหนดค่า Gemini API Key จาก Environment Variables
+// Define Gemini API Key from Environment Variables.
 const geminiApiKey = process.env.GEMINI_API_KEY;
 
-// ตรวจสอบว่ามี Gemini API Key หรือไม่
+// Check if Gemini API Key is set.
 if (!geminiApiKey) {
   console.error('GEMINI_API_KEY is not set. Please set the environment variable.');
-  // คุณอาจจะเลือกที่จะ throw error หรือจัดการอย่างอื่น
+  // You might choose to throw an error or handle it differently.
 }
 
-// สร้าง Gemini client
+// Create Gemini client.
 const genAI = new GoogleGenerativeAI(geminiApiKey);
 
-// เลือกโมเดล Gemini ที่จะใช้ (เช่น gemini-pro)
-const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+// Select the Gemini model to use.
+// Using 'gemini-1.5-flash' for general text generation, as 'gemini-pro' might not be available in all regions or for all API versions.
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-// ฟังก์ชันสำหรับประมวลผลข้อความจาก LINE
+// Function to process messages from LINE.
 async function handleEvent(event) {
-  // ตรวจสอบว่าเป็นข้อความประเภท text และเป็นข้อความจากผู้ใช้
+  // Check if the message is of type 'text' and from a user.
   if (event.type === 'message' && event.message.type === 'text') {
     const userMessage = event.message.text;
     console.log(`Received message from user: ${userMessage}`);
 
-    let replyText = 'ขออภัยค่ะ ไม่สามารถประมวลผลคำขอได้ในขณะนี้'; // ข้อความตอบกลับเริ่มต้น
+    let replyText = 'ขออภัยค่ะ ไม่สามารถประมวลผลคำขอได้ในขณะนี้'; // Default reply message.
 
     try {
-      // ส่งข้อความของผู้ใช้ไปยัง Gemini API
+      // Send the user's message to the Gemini API.
       const result = await model.generateContent(userMessage);
       const response = await result.response;
-      const geminiText = response.text(); // ดึงข้อความตอบกลับจาก Gemini
+      const geminiText = response.text(); // Extract the reply text from Gemini.
 
       if (geminiText) {
         replyText = geminiText;
       }
     } catch (error) {
       console.error('Error calling Gemini API:', error);
-      // ในกรณีที่เกิดข้อผิดพลาดกับ Gemini API
+      // In case of an error with the Gemini API.
       replyText = 'ขออภัยค่ะ เกิดข้อผิดพลาดในการเชื่อมต่อกับ AI';
     }
 
-    // ตอบกลับข้อความไปยัง LINE
+    // Reply to the message on LINE.
     return client.replyMessage(event.replyToken, {
       type: 'text',
       text: replyText,
     });
   }
 
-  // หากไม่ใช่ข้อความประเภท text หรือไม่ใช่ message event ที่ต้องการ
+  // If it's not a text message or a desired message event, resolve with null.
   return Promise.resolve(null);
 }
 
-// ฟังก์ชันหลักสำหรับ Serverless Function ของ Vercel
-// Vercel จะเรียกใช้ฟังก์ชันนี้เมื่อมี HTTP Request เข้ามา
+// Main function for the Vercel Serverless Function.
+// Vercel will call this function when an HTTP Request comes in.
 module.exports = async (req, res) => {
   if (req.method === 'POST') {
     try {
-      // ตรวจสอบ Signature ของ Webhook เพื่อความปลอดภัย
-      // (สำคัญมาก! เพื่อยืนยันว่า Request มาจาก LINE จริงๆ)
+      // Verify the Webhook Signature for security.
+      // (Very important! To confirm the Request truly comes from LINE.)
       const signature = req.headers['x-line-signature'];
-      const body = JSON.stringify(req.body); // ต้องแปลง body เป็น string ก่อน verify
+      const body = JSON.stringify(req.body); // Must convert body to string before verifying.
 
       if (!line.validateSignature(body, config.channelSecret, signature)) {
         console.warn('Invalid LINE signature.');
@@ -86,12 +87,12 @@ module.exports = async (req, res) => {
         return;
       }
 
-      // ประมวลผลแต่ละ Event ที่ LINE ส่งมา
-      // LINE อาจส่งหลาย Event มาใน Request เดียวกัน
+      // Process each Event sent by LINE.
+      // LINE might send multiple Events in a single Request.
       const events = req.body.events;
       const results = await Promise.all(events.map(handleEvent));
 
-      // ส่งสถานะกลับไปว่าประมวลผลสำเร็จ
+      // Send a success status back.
       res.status(200).json({
         success: true,
         results: results,
@@ -106,8 +107,27 @@ module.exports = async (req, res) => {
       });
     }
   } else {
-    // สำหรับ Request ประเภทอื่นที่ไม่ใช่ POST (เช่น GET)
-    // อาจใช้สำหรับทดสอบว่า Server ทำงานอยู่หรือไม่
+    // For other Request types that are not POST (e.g., GET).
+    // Can be used to test if the server is running.
     res.status(200).send('LINE Chatbot is running!');
   }
 };
+```json
+// package.json
+{
+  "name": "line-gemini-chatbot",
+  "version": "1.0.0",
+  "description": "LINE Chatbot powered by Google Gemini on Vercel",
+  "main": "api/index.js",
+  "scripts": {
+    "start": "node api/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@google/generative-ai": "^0.1.3",
+    "@line/bot-sdk": "^7.5.2",
+    "dotenv": "^16.3.1"
+  }
+}
